@@ -10,13 +10,13 @@ export default defineConfig({
     hmr: {
       overlay: false // Disable error overlay in production
     },
-    proxy: {
+    proxy: process.env.NODE_ENV === 'development' ? {
       '/api': {
         target: 'http://127.0.0.1:8001',
         changeOrigin: true,
         secure: false,
       }
-    }
+    } : {}
   },
   build: {
     outDir: 'dist',
