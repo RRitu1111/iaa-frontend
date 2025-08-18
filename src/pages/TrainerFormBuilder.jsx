@@ -122,19 +122,9 @@ const TrainerFormBuilder = ({ theme, toggleTheme }) => {
 
   const fetchDepartments = async () => {
     try {
-      const token = localStorage.getItem('iaa_token')
-      const response = await fetch('http://localhost:8001/departments', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setDepartments(data.departments || [])
-      } else {
-        console.error('Failed to fetch departments')
-      }
+      // Use adminService instead of direct fetch
+      const departments = await adminService.getDepartments()
+      setDepartments(departments || [])
     } catch (error) {
       console.error('Error fetching departments:', error)
     } finally {
