@@ -6,7 +6,8 @@
  */
 
 // Base API URL - Cloud-ready configuration
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8001';
+const isDevelopment = import.meta.env.VITE_ENVIRONMENT === 'development';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (isDevelopment ? 'http://127.0.0.1:8001' : 'https://iaa-2bs1.onrender.com');
 
 // App Configuration
 export const APP_CONFIG = {
