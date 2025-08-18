@@ -4,7 +4,9 @@ class AdminService {
   // Get all departments
   async getDepartments() {
     try {
-      const response = await fetch(`${API_BASE_URL}/departments`)
+      const response = await fetch(`${API_BASE_URL}/departments`, {
+        headers: getAuthHeaders()
+      })
       const data = await response.json()
 
       if (!response.ok) {
