@@ -462,13 +462,43 @@ const AdminDashboard = ({ theme, toggleTheme }) => {
   const handleApproveDeletionRequest = async (requestId, formTitle) => {
     if (window.confirm(`Are you sure you want to approve the deletion of "${formTitle}"? This action cannot be undone.`)) {
       try {
+        // Show loading state
+        const loadingMessage = document.createElement('div')
+        loadingMessage.className = 'loading-message'
+        loadingMessage.innerHTML = `
+          <div class="loading-spinner"></div>
+          <p>Processing deletion request...</p>
+        `
+        document.body.appendChild(loadingMessage)
+
         await adminService.approveFormDeletionRequest(requestId)
+        
+        // Remove loading message
+        document.body.removeChild(loadingMessage)
+        
         alert('Form deletion approved and form deleted successfully!')
 
         // Refresh data
-        fetchDashboardData(false)
+        await fetchDashboardData(false)
       } catch (error) {
-        alert(`Failed to approve deletion request: ${error.message}`)
+        // Handle specific error cases
+        let errorMessage = 'Failed to approve deletion request: '
+        
+        if (error.message.includes('timeout') || error.message.includes('multiple attempts')) {
+          errorMessage += 'The server is taking longer than expected to respond. Please try again in a few moments.'
+        } else if (error.message.includes('Network Error')) {
+          errorMessage += 'Please check your internet connection and try again.'
+        } else {
+          errorMessage += error.message
+        }
+
+        alert(errorMessage)
+        
+        // Clean up any remaining loading message
+        const loadingMessage = document.querySelector('.loading-message')
+        if (loadingMessage) {
+          document.body.removeChild(loadingMessage)
+        }
       }
     }
   }
