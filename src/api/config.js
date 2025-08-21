@@ -87,20 +87,56 @@ export const getAuthHeaders = () => {
   };
 };
 
-// Handle API errors
-export const handleApiError = (error) => {
+// Advanced API error handling with retry logic
+export const handleApiError = async (error, retryCount = 0, maxRetries = 3) => {
   console.error('API Error:', error);
   
-  // Network error
-  if (!error.response) {
+  // Network or CORS error
+  if (!error.response || error.message.includes('NetworkError') || error.message.includes('Failed to fetch')) {
+    // Exponential backoff
+    if (retryCount < maxRetries) {
+      const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s, etc.
+      console.log(`Retrying after ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      try {
+        // First check if API is accessible
+        const isApiUp = await checkUrlAccess(API_BASE_URL);
+        if (!isApiUp) {
+          // Try alternate URL
+          const alternateUrl = API_BASE_URL === LOCAL_API ? CLOUD_API : LOCAL_API;
+          if (await checkUrlAccess(alternateUrl)) {
+            console.log(`Switching to alternate API URL: ${alternateUrl}`);
+            API_BASE_URL = alternateUrl;
+            // Allow the calling code to retry with new URL
+            return {
+              success: false,
+              retry: true,
+              message: 'Switching to alternate API endpoint. Please retry your action.'
+            };
+          }
+        }
+        
+        return {
+          success: false,
+          message: 'Network error. Please check your connection and try again.',
+          retryAfter: delay
+        };
+      } catch (retryError) {
+        return await handleApiError(retryError, retryCount + 1, maxRetries);
+      }
+    }
+    
     return {
       success: false,
-      message: 'Network error. Please check your connection.',
+      message: 'Unable to connect to the server. Please try again later.',
+      final: true
     };
   }
   
   // Server error with response
-  const status = error.response.status;
+  const status = error.response?.status;
   
   if (status === 401) {
     // Unauthorized - clear token and redirect to login
@@ -110,6 +146,7 @@ export const handleApiError = (error) => {
     return {
       success: false,
       message: 'Your session has expired. Please login again.',
+      final: true
     };
   }
   
@@ -117,6 +154,7 @@ export const handleApiError = (error) => {
     return {
       success: false,
       message: 'You do not have permission to perform this action.',
+      final: true
     };
   }
   
@@ -124,13 +162,28 @@ export const handleApiError = (error) => {
     return {
       success: false,
       message: 'The requested resource was not found.',
+      final: true
     };
+  }
+  
+  if (status === 502 || status === 503 || status === 504) {
+    // Gateway/availability errors - retry with backoff
+    if (retryCount < maxRetries) {
+      const delay = Math.pow(2, retryCount) * 1000;
+      return {
+        success: false,
+        message: 'Server temporarily unavailable. Retrying...',
+        retry: true,
+        retryAfter: delay
+      };
+    }
   }
   
   if (status >= 500) {
     return {
       success: false,
-      message: 'Server error. Please try again later.',
+      message: 'The server encountered an error. Please try again later.',
+      final: true
     };
   }
   
@@ -138,6 +191,7 @@ export const handleApiError = (error) => {
   return {
     success: false,
     message: error.response?.data?.message || 'An unexpected error occurred.',
+    final: true
   };
 };
 
