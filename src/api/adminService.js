@@ -500,22 +500,103 @@ class AdminService {
   }
 
   async approveFormDeletionRequest(requestId) {
-    try {
-      const response = await fetch(`${API_BASE_URL}/form-deletion-requests/${requestId}/approve`, {
-        method: 'PUT',
-        headers: getAuthHeaders()
-      })
+    let retryCount = 0;
+    const maxRetries = 3;
+    const baseDelay = 1000; // 1 second
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to approve deletion request')
+    const checkNetworkConnection = async () => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        await fetch('https://iaa-2bs1.onrender.com/health', { 
+          method: 'GET',
+          signal: controller.signal 
+        });
+        
+        clearTimeout(timeoutId);
+        return true;
+      } catch (error) {
+        return false;
       }
+    };
 
-      return data.request
-    } catch (error) {
-      console.error('Error approving deletion request:', error)
-      throw error
+    while (retryCount < maxRetries) {
+      try {
+        console.log(`Attempting to approve deletion request ${requestId} (attempt ${retryCount + 1}/${maxRetries})`)
+        
+        // Check network connection before making the request
+        const isOnline = await checkNetworkConnection();
+        if (!isOnline) {
+          throw new Error('NETWORK_ERROR');
+        }
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+        const response = await fetch(`${API_BASE_URL}/form-deletion-requests/${requestId}/approve`, {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        // Even if there's an error, try to parse the response
+        let data;
+        try {
+          data = await response.json()
+        } catch (e) {
+          data = { detail: 'Could not parse server response' }
+        }
+
+        if (!response.ok) {
+          // Log the actual error details for debugging
+          console.error('Server error details:', {
+            status: response.status,
+            statusText: response.statusText,
+            data: data
+          })
+
+          if (response.status === 500) {
+            // For 500 errors, we'll retry
+            throw new Error('SERVER_ERROR')
+          }
+
+          // For other error codes, throw with specific message
+          throw new Error(data.detail || `Server returned ${response.status} ${response.statusText}`)
+        }
+
+        return data.request
+      } catch (error) {
+        console.error(`Error approving deletion request (attempt ${retryCount + 1}):`, error)
+        
+        const errorType = error.message;
+        
+        // Handle specific error types
+        if (errorType === 'NETWORK_ERROR') {
+          throw new Error('Unable to connect to the server. Please check your internet connection and try again.');
+        }
+        
+        if (error.name === 'AbortError') {
+          console.log('Request timed out, retrying...');
+          retryCount++;
+          if (retryCount === maxRetries) {
+            throw new Error('The server is taking too long to respond. Please try again later.');
+          }
+        } else if (errorType === 'SERVER_ERROR') {
+          retryCount++;
+          if (retryCount === maxRetries) {
+            throw new Error('The server encountered an error. This could be due to high traffic. Please try again in a few moments.');
+          }
+        } else {
+          // For other errors, don't retry
+          throw error;
+        }
+
+        // Wait before retrying, with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, baseDelay * Math.pow(2, retryCount)))
+      }
     }
   }
 

@@ -7,7 +7,43 @@
 
 // Base API URL - Cloud-ready configuration
 const isDevelopment = import.meta.env.VITE_ENVIRONMENT === 'development';
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (isDevelopment ? 'http://127.0.0.1:8001' : 'https://iaa-2bs1.onrender.com');
+
+// Helper function to check if an URL is accessible
+const checkUrlAccess = async (url) => {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    await fetch(`${url}/health`, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// Define API URLs
+const LOCAL_API = 'http://127.0.0.1:8001';
+const CLOUD_API = 'https://iaa-2bs1.onrender.com';
+
+// Initialize API_BASE_URL
+export let API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (isDevelopment ? LOCAL_API : CLOUD_API);
+
+// Dynamic API URL selection
+(async () => {
+  try {
+    // First try the configured URL
+    if (!await checkUrlAccess(API_BASE_URL)) {
+      // If configured URL fails, try the alternate URL
+      const alternateUrl = API_BASE_URL === LOCAL_API ? CLOUD_API : LOCAL_API;
+      if (await checkUrlAccess(alternateUrl)) {
+        console.log(`Switching to alternate API URL: ${alternateUrl}`);
+        API_BASE_URL = alternateUrl;
+      }
+    }
+  } catch (error) {
+    console.error('Error checking API URLs:', error);
+  }
+})();
 
 // App Configuration
 export const APP_CONFIG = {
